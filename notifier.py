@@ -11,20 +11,17 @@ logger = logging.getLogger("notifier")
 
 def build_sign_in_title(message: str) -> str:
     lines = message.split("\n")
-    base_title = lines[0] if lines else "森空岛签到通知"
     success_count = sum(1 for line in lines if line.strip().startswith("✅"))
     failure_count = sum(1 for line in lines if line.strip().startswith("❌"))
 
     if success_count and failure_count:
-        status = "部分成功"
+        return "森空岛签到姬-部分成功"
     elif success_count:
-        status = "全部成功"
+        return "森空岛签到姬-全部成功"
     elif failure_count:
-        status = "全部失败"
+        return "森空岛签到姬-全部失败"
     else:
-        status = "结果未知"
-
-    return f"{base_title} - {status}"
+        return "森空岛签到姬-结果未知"
 
 
 class NotifierManager:
