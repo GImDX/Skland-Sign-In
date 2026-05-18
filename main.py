@@ -139,7 +139,8 @@ async def run_sign_in():
                     detail = f" ({r.error})"
 
                 # 拼接单行: ✅ 明日方舟: 成功 (龙门币x500)
-                line = f"{icon} {r.game}: {status_text}{detail}"
+                channel = f"({r.channel})" if r.channel else ""
+                line = f"{icon} {r.game}{channel}: {status_text}{detail}"
                 notify_lines.append(line)
                 
                 # 控制台输出简单日志
