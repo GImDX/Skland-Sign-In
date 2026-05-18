@@ -124,6 +124,10 @@ class SklandAPI:
         self._client: httpx.AsyncClient | None = None
         self._did: str | None = None
 
+    @staticmethod
+    def _normalize_channel_name(channel: str) -> str:
+        return str(channel or "").strip().lower()
+
     def _is_signed_today(self, result: SignInResult) -> bool:
         """Check if the result indicates already signed today"""
         if result.success:
@@ -552,10 +556,18 @@ class SklandAPI:
 
         return results
 
-    async def do_full_sign_in(self, user_token: str, game_type: int = 0) -> tuple[list[SignInResult], str]:
+    async def do_full_sign_in(
+        self,
+        user_token: str,
+        game_type: int = 0,
+        games: list[str] | None = None,
+        channels: list[str] | None = None,
+    ) -> tuple[list[SignInResult], str]:
         """
         Complete sign-in flow for a user token
         game_type: 0=全部, 1=仅明日方舟, 2=仅终末地
+        games: app codes to sign in, e.g. ["arknights", "endfield"]
+        channels: channel names to sign in, e.g. ["bilibili服", "官服"]
         Returns: (list of results, nickname)
         """
         # Get authorization
@@ -572,27 +584,54 @@ class SklandAPI:
 
         nickname = bindings[0].nickname if bindings else ""
         results = []
+        if games is None:
+            if game_type == 1:
+                selected_games = {"arknights"}
+            elif game_type == 2:
+                selected_games = {"endfield"}
+            else:
+                selected_games = {"arknights", "endfield"}
+        else:
+            selected_games = set(games)
+
+        selected_channels = None
+        if channels is not None:
+            selected_channels = {self._normalize_channel_name(channel) for channel in channels}
 
         for binding in bindings:
-            # 引入 game_type 判断逻辑
-            if binding.app_code == "arknights" and game_type in (0, 1):
+            if binding.app_code not in selected_games:
+                continue
+
+            if (
+                selected_channels is not None
+                and self._normalize_channel_name(binding.channel_name) not in selected_channels
+            ):
+                continue
+
+            if binding.app_code == "arknights":
                 result = await self.sign_arknights(cred, binding)
                 results.append(result)
-            elif binding.app_code == "endfield" and game_type in (0, 2):
+            elif binding.app_code == "endfield":
                 endfield_results = await self.sign_endfield(cred, binding)
                 results.extend(endfield_results)
 
         return results, nickname
 
-    async def check_sign_in_status(self, user_token: str, game_type: int = 0) -> tuple[dict[str, bool], str]:
+    async def check_sign_in_status(
+        self,
+        user_token: str,
+        game_type: int = 0,
+        games: list[str] | None = None,
+        channels: list[str] | None = None,
+    ) -> tuple[dict[str, bool], str]:
         """
         Check sign-in status without signing in
 
         Returns: ({game: signed_today}, nickname)
         """
         try:
-            # 将 game_type 传递给 do_full_sign_in
-            results, nickname = await self.do_full_sign_in(user_token, game_type)
+            # 将过滤配置传递给 do_full_sign_in
+            results, nickname = await self.do_full_sign_in(user_token, game_type, games, channels)
 
             status = {"arknights": False, "endfield": False}
 

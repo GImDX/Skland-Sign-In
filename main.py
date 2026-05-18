@@ -10,6 +10,62 @@ from notifier import NotifierManager
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("SklandStandalone")
 
+GAME_ALIASES = {
+    "arknights": "arknights",
+    "明日方舟": "arknights",
+    "方舟": "arknights",
+    "endfield": "endfield",
+    "终末地": "endfield",
+}
+
+CHANNEL_ALIASES = {
+    "bilibili": "bilibili服",
+    "bilibili服": "bilibili服",
+    "b服": "bilibili服",
+    "官服": "官服",
+    "official": "官服",
+}
+
+
+def _as_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return [value]
+
+
+def parse_games(user: dict) -> list[str]:
+    if "games" in user:
+        games = []
+        for item in _as_list(user.get("games")):
+            key = str(item).strip().lower()
+            game = GAME_ALIASES.get(key) or GAME_ALIASES.get(str(item).strip())
+            if game and game not in games:
+                games.append(game)
+        return games or ["arknights", "endfield"]
+
+    game_type = int(user.get("game_type", 0))
+    if game_type == 1:
+        return ["arknights"]
+    if game_type == 2:
+        return ["endfield"]
+    return ["arknights", "endfield"]
+
+
+def parse_channels(user: dict) -> list[str]:
+    channels = []
+    for item in _as_list(user.get("channels", ["bilibili服", "官服"])):
+        raw = str(item).strip()
+        key = raw.lower()
+        channel = CHANNEL_ALIASES.get(key) or CHANNEL_ALIASES.get(raw) or raw
+        if channel and channel not in channels:
+            channels.append(channel)
+    return channels or ["bilibili服", "官服"]
+
+
 async def run_sign_in():
     # 1. 加载配置
     try:
@@ -93,14 +149,16 @@ async def run_sign_in():
         nickname_cfg = user.get("nickname", "未知用户")
         token = user.get("token")
         
-        # 从配置中读取 game_type，如果没有配置则默认为 0 (全部签到)
-        # 0=全部, 1=仅明日方舟, 2=仅终末地
-        game_type = int(user.get("game_type", 0)) 
+        # games/channels 不配置时默认：明日方舟 + 终末地，bilibili服 + 官服
+        # 兼容旧配置 game_type：0=全部, 1=仅明日方舟, 2=仅终末地
+        games = parse_games(user)
+        channels = parse_channels(user)
         
         # 格式要求: 🌈 No.1(nickname1):
         user_header = f"🌈 No.{index}({nickname_cfg}):"
         notify_lines.append(user_header)
         logger.info(f"正在处理: {nickname_cfg}")
+        logger.info(f"  - 签到范围: 游戏={','.join(games)} 渠道={','.join(channels)}")
 
         if not token:
             logger.error(f"  [{nickname_cfg}] 未配置 Token")
@@ -109,12 +167,16 @@ async def run_sign_in():
             continue
             
         try:
-            # 执行签到 (传入 game_type 参数)
-            results, official_nickname = await api.do_full_sign_in(token, game_type)
+            # 执行签到
+            results, official_nickname = await api.do_full_sign_in(
+                token,
+                games=games,
+                channels=channels,
+            )
             
             if not results:
-                notify_lines.append("❌ 未找到绑定角色")
-                logger.warning(f"  [{nickname_cfg}] 未找到角色")
+                notify_lines.append("❌ 未找到符合配置的绑定角色")
+                logger.warning(f"  [{nickname_cfg}] 未找到符合配置的绑定角色")
             
             for r in results:
                 # 状态判定逻辑

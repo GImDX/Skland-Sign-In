@@ -24,6 +24,22 @@ cp config.example.yaml config.yaml
 
 在 `users` 列表下填写账号昵称和 Token。
 
+可按账号指定签到范围：
+
+```yaml
+users:
+  - nickname: "我的大号"
+    token: "这里填入教程中获取的Token"
+    games:
+      - "明日方舟"
+      - "终末地"
+    channels:
+      - "bilibili服"
+      - "官服"
+```
+
+`games` 不填时默认签到 `明日方舟` 和 `终末地`，支持填写 `明日方舟`、`终末地`、`arknights`、`endfield`。`channels` 不填时默认签到 `bilibili服` 和 `官服`，也可以只保留其中一个渠道。旧配置 `game_type` 仍兼容，但如果同时配置了 `games`，会优先使用 `games`。
+
 **如何获取 Token：**
 
 1. 登录 [森空岛官网](https://www.skland.com/)。
