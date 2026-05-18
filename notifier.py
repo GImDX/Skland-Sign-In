@@ -9,6 +9,24 @@ from typing import Optional
 logger = logging.getLogger("notifier")
 
 
+def build_sign_in_title(message: str) -> str:
+    lines = message.split("\n")
+    base_title = lines[0] if lines else "森空岛签到通知"
+    success_count = sum(1 for line in lines if line.strip().startswith("✅"))
+    failure_count = sum(1 for line in lines if line.strip().startswith("❌"))
+
+    if success_count and failure_count:
+        status = "部分成功"
+    elif success_count:
+        status = "全部成功"
+    elif failure_count:
+        status = "全部失败"
+    else:
+        status = "结果未知"
+
+    return f"{base_title} - {status}"
+
+
 class NotifierManager:
     """统一通知管理器，根据配置自动选择可用的推送渠道"""
 
@@ -303,8 +321,7 @@ class ServerChanNotifier(BaseNotifier):
 
     async def send(self, message: str) -> bool:
         url = f"https://sctapi.ftqq.com/{self.send_key}.send"
-        lines = message.split("\n")
-        title = lines[0] if lines else "森空岛签到通知"
+        title = build_sign_in_title(message)
 
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, data={
@@ -414,7 +431,7 @@ class ServerChan3Notifier(BaseNotifier):
             return False
 
         lines = message.split("\n")
-        title = lines[0] if lines else "森空岛签到通知"
+        title = build_sign_in_title(message)
         desp = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
         payload = {"title": title, "desp": desp}
         headers = {"Content-Type": "application/json;charset=utf-8"}
