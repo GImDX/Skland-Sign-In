@@ -26,6 +26,8 @@ CHANNEL_ALIASES = {
     "official": "官服",
 }
 
+SIGNED_TODAY_KEYWORDS = ["已签到", "重复", "already", "请勿重复", "签到过", "今日已"]
+
 
 def _as_list(value):
     if value is None:
@@ -64,6 +66,13 @@ def parse_channels(user: dict) -> list[str]:
         if channel and channel not in channels:
             channels.append(channel)
     return channels or ["bilibili服", "官服"]
+
+
+def is_already_signed_result(result) -> bool:
+    if result.success:
+        return False
+    error = result.error.lower() if result.error else ""
+    return any(keyword in error for keyword in SIGNED_TODAY_KEYWORDS)
 
 
 async def run_sign_in():
@@ -115,6 +124,8 @@ async def run_sign_in():
     notify_lines = ["📅 森空岛签到姬", ""] # 空字符串用于换行
     
     logger.info(f"开始执行签到任务，共 {len(users)} 个账号")
+    all_targets_already_signed = True
+    has_sign_result = False
     
     # ================== 【提前获取设备指纹 (防风控献祭)】 ==================
     logger.info("正在初始化设备指纹...")
@@ -164,6 +175,7 @@ async def run_sign_in():
             logger.error(f"  [{nickname_cfg}] 未配置 Token")
             notify_lines.append("❌ 账号配置错误: 缺少Token")
             notify_lines.append("") 
+            all_targets_already_signed = False
             continue
             
         try:
@@ -177,20 +189,23 @@ async def run_sign_in():
             if not results:
                 notify_lines.append("❌ 未找到符合配置的绑定角色")
                 logger.warning(f"  [{nickname_cfg}] 未找到符合配置的绑定角色")
+                all_targets_already_signed = False
             
             for r in results:
+                has_sign_result = True
                 # 状态判定逻辑
                 # 成功 -> ✅, 成功 (奖励)
                 # 已签到 -> ✅, 已签
                 # 失败 -> ❌, 失败 (原因)
                 
-                is_signed_already = not r.success and any(k in r.error for k in ["已签到", "重复", "already"])
+                is_signed_already = is_already_signed_result(r)
                 
                 if r.success:
                     icon = "✅"
                     status_text = "成功"
                     # 如果有奖励，显示具体奖励；否则留空
                     detail = f" ({', '.join(r.awards)})" if r.awards else ""
+                    all_targets_already_signed = False
                 elif is_signed_already:
                     icon = "✅"
                     status_text = "已签"
@@ -199,6 +214,7 @@ async def run_sign_in():
                     icon = "❌"
                     status_text = "失败"
                     detail = f" ({r.error})"
+                    all_targets_already_signed = False
 
                 # 拼接单行: ✅ 明日方舟: 成功 (龙门币x500)
                 channel = f"({r.channel})" if r.channel else ""
@@ -212,6 +228,7 @@ async def run_sign_in():
             error_msg = str(e)
             logger.error(f"  [{nickname_cfg}] 异常: {error_msg}")
             notify_lines.append(f"❌ 系统错误: {error_msg}")
+            all_targets_already_signed = False
 
         # 每个用户结束后加个空行，美观
         notify_lines.append("")
@@ -223,7 +240,10 @@ async def run_sign_in():
         notify_lines.pop()
 
     final_message = "\n".join(notify_lines)
-    await notifier.send_all(final_message)
+    if all_targets_already_signed and has_sign_result:
+        logger.info("检测到本次运行前所有配置目标均已签到，跳过推送")
+    else:
+        await notifier.send_all(final_message)
         
     logger.info("所有任务已完成")
 
